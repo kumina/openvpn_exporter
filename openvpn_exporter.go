@@ -176,14 +176,15 @@ func CollectClientStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 			// Stats header.
 		} else if fields[0] == "Updated" && len(fields) == 2 {
 			// Time at which the statistics were updated.
-			time, err := time.Parse("Mon Jan 2 15:04:05 2006", fields[1])
+			location, _ := time.LoadLocation("Local")
+			time, err := time.ParseInLocation("Mon Jan 2 15:04:05 2006", fields[1], location)
 			if err != nil {
 				return err
 			}
 			ch <- prometheus.MustNewConstMetric(
 				openvpnStatusUpdateTimeDesc,
 				prometheus.GaugeValue,
-				float64(time.Local().Unix()),
+				float64(time.Unix()),
 				statusPath)
 		} else if desc, ok := openvpnClientDescs[fields[0]]; ok && len(fields) == 2 {
 			// Traffic counters.
