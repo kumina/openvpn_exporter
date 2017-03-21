@@ -183,7 +183,7 @@ func CollectClientStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 			ch <- prometheus.MustNewConstMetric(
 				openvpnStatusUpdateTimeDesc,
 				prometheus.GaugeValue,
-				float64(time.Unix()),
+				float64(time.Local().Unix()),
 				statusPath)
 		} else if desc, ok := openvpnClientDescs[fields[0]]; ok && len(fields) == 2 {
 			// Traffic counters.
