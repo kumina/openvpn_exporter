@@ -50,6 +50,24 @@ var (
 		"Number of routes propagated by the OpenVPN server.",
 		[]string{"status_path"}, nil)
 
+    // Metrics exported about clients from the server
+    openvpnServerClientStatsDesc = map[string]*prometheus.Desc{
+        "Bytes Received": prometheus.NewDesc(
+            prometheus.BuildFQName("openvpn", "server", "client_received_bytes_total"),
+            "Total amount of traffic received from client, in bytes.",
+            []string{"client", "real_ip", "virtual_ip"}, nil),
+        "Bytes Sent": prometheus.NewDesc(
+            prometheus.BuildFQName("openvpn", "server", "client_sent_bytes_total"),
+            "Total amount of traffic sent to client, in bytes.",
+            []string{"client", "real_ip", "virtual_ip"}, nil),
+        "Client Up": prometheus.NewDesc(
+            prometheus.BuildFQName("openvpn", "server", "client_up"),
+            "Client up",
+            []string{"client", "real_ip", "virtual_ip"}, nil),
+        }
+
+
+
 	// Metrics specific to OpenVPN clients.
 	openvpnClientDescs = map[string]*prometheus.Desc{
 		"TUN/TAP read bytes": prometheus.NewDesc(
@@ -120,11 +138,33 @@ func CollectServerStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 	scanner.Split(bufio.ScanLines)
 	clients := 0
 	routes := 0
+    client_name := ""
+    real_address := ""
+    virtual_address := ""
+    traffic_data := map[string]float64 {
+        "Bytes Sent": 0,
+        "Bytes Received": 0,
+        "Client Up": 0,
+    }
 	for scanner.Scan() {
 		fields := strings.Split(scanner.Text(), separator)
 		if fields[0] == "CLIENT_LIST" {
 			// Per-client stats.
+            client_name = fields[1]
+            real_address = fields[2]
+            virtual_address = fields[3]
+            traffic_data["Bytes Received"],_ = strconv.ParseFloat(fields[4], 64)
+            traffic_data["Bytes Sent"],_ = strconv.ParseFloat(fields[5], 64)
+            traffic_data["Client Up"] = 1
 			clients++
+            for key, desc := range openvpnServerClientStatsDesc {
+                ch <- prometheus.MustNewConstMetric(
+                    desc,
+                    prometheus.CounterValue,
+                    traffic_data[key],
+                    client_name, real_address, virtual_address,
+                )
+            }
 		} else if fields[0] == "END" && len(fields) == 1 {
 			// Stats footer.
 		} else if fields[0] == "GLOBAL_STATS" {
