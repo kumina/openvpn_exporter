@@ -43,8 +43,12 @@ For server status files (both version 2 and 3), the exporter generates
 metrics that may look like this:
 
 ```
-openvpn_server_clients{status_path="..."} 5
-openvpn_server_routes{status_path="..."} 5
+openvpn_server_client_received_bytes_total{common_name="...",connection_time="...",real_address="...",status_path="...",username="...",virtual_address="..."} 139583
+openvpn_server_client_received_bytes_total{common_name="...",connection_time="...",real_address="...",status_path="...",username="...",virtual_address="..."} 8.8701293e+07
+openvpn_server_client_sent_bytes_total{common_name="...",connection_time="...",real_address="...",status_path="...",username="...",virtual_address="..."} 710764
+openvpn_server_client_sent_bytes_total{common_name="...",connection_time="...",real_address="...",status_path="...",username="...",virtual_address="..."} 1.21701942e+08
+openvpn_server_route_last_reference_time_seconds{common_name="...",real_address="...",status_path="...",virtual_address="..."} 1.493018841e+09
+openvpn_server_route_last_reference_time_seconds{common_name="...",real_address="...",status_path="...",virtual_address="..."} 1.493018971e+09
 openvpn_status_update_time_seconds{status_path="..."} 1.490089154e+09
 openvpn_up{status_path="..."} 1
 ```
