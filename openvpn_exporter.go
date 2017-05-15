@@ -58,8 +58,8 @@ var (
 				"Common Name",
 				"Connected Since (time_t)",
 				"Real Address",
-				"Username",
 				"Virtual Address",
+				"Username",
 			},
 			Metrics: []OpenvpnServerHeaderField{
 				OpenvpnServerHeaderField{
