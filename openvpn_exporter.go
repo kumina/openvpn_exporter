@@ -278,6 +278,7 @@ func CollectClientStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 
 func CollectStatusFromFile(statusPath string, ch chan<- prometheus.Metric) error {
 	conn, err := os.Open(statusPath)
+	defer conn.Close()
 	if err != nil {
 		return err
 	}
