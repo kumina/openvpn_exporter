@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type OpenvpnServerHeader struct {
@@ -52,8 +53,12 @@ var (
 		[]string{"status_path"}, nil)
 
 	// Metrics specific to OpenVPN servers.
+	openvpnConnectedClientsDesc = prometheus.NewDesc(
+		prometheus.BuildFQName("openvpn", "", "openvpn_server_connected_clients"),
+		"Number Of Connected Clients", nil, nil)
+
 	openvpnServerHeaders = map[string]OpenvpnServerHeader{
-		"CLIENT_LIST": OpenvpnServerHeader{
+		"CLIENT_LIST": {
 			LabelColumns: []string{
 				"Common Name",
 				"Connected Since (time_t)",
@@ -62,7 +67,7 @@ var (
 				"Username",
 			},
 			Metrics: []OpenvpnServerHeaderField{
-				OpenvpnServerHeaderField{
+				{
 					Column: "Bytes Received",
 					Desc: prometheus.NewDesc(
 						prometheus.BuildFQName("openvpn", "server", "client_received_bytes_total"),
@@ -70,7 +75,7 @@ var (
 						[]string{"status_path", "common_name", "connection_time", "real_address", "virtual_address", "username"}, nil),
 					ValueType: prometheus.CounterValue,
 				},
-				OpenvpnServerHeaderField{
+				{
 					Column: "Bytes Sent",
 					Desc: prometheus.NewDesc(
 						prometheus.BuildFQName("openvpn", "server", "client_sent_bytes_total"),
@@ -80,14 +85,14 @@ var (
 				},
 			},
 		},
-		"ROUTING_TABLE": OpenvpnServerHeader{
+		"ROUTING_TABLE": {
 			LabelColumns: []string{
 				"Common Name",
 				"Real Address",
 				"Virtual Address",
 			},
 			Metrics: []OpenvpnServerHeaderField{
-				OpenvpnServerHeaderField{
+				{
 					Column: "Last Ref (time_t)",
 					Desc: prometheus.NewDesc(
 						prometheus.BuildFQName("openvpn", "server", "route_last_reference_time_seconds"),
@@ -159,7 +164,7 @@ func CollectStatusFromReader(statusPath string, file io.Reader, ch chan<- promet
 		// Client statistics.
 		return CollectClientStatusFromReader(statusPath, reader, ch)
 	} else {
-		return fmt.Errorf("Unexpected file contents: %q", buf)
+		return fmt.Errorf("unexpected file contents: %q", buf)
 	}
 }
 
@@ -168,6 +173,9 @@ func CollectServerStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 	scanner := bufio.NewScanner(file)
 	scanner.Split(bufio.ScanLines)
 	headersFound := map[string][]string{}
+	// counter of connected client
+	numberConnectedClient := 0
+
 	for scanner.Scan() {
 		fields := strings.Split(scanner.Text(), separator)
 		if fields[0] == "END" && len(fields) == 1 {
@@ -179,17 +187,19 @@ func CollectServerStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 			headersFound[fields[1]] = fields[2:]
 		} else if fields[0] == "TIME" && len(fields) == 3 {
 			// Time at which the statistics were updated.
-			time, err := strconv.ParseFloat(fields[2], 64)
+			timeStartStats, err := strconv.ParseFloat(fields[2], 64)
 			if err != nil {
 				return err
 			}
 			ch <- prometheus.MustNewConstMetric(
 				openvpnStatusUpdateTimeDesc,
 				prometheus.GaugeValue,
-				time,
+				timeStartStats,
 				statusPath)
 		} else if fields[0] == "TITLE" && len(fields) == 2 {
 			// OpenVPN version number.
+		} else if fields[0] == "CLIENT_LIST"{
+			numberConnectedClient ++
 		} else if header, ok := openvpnServerHeaders[fields[0]]; ok {
 			// Entry that depends on a preceding HEADERS directive.
 			columnNames, ok := headersFound[fields[0]]
@@ -230,9 +240,14 @@ func CollectServerStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 				}
 			}
 		} else {
-			return fmt.Errorf("Unsupported key: %q", fields[0])
+			return fmt.Errorf("unsupported key: %q", fields[0])
 		}
 	}
+	// add the number of connected client
+	ch <- prometheus.MustNewConstMetric(
+		openvpnConnectedClientsDesc,
+		prometheus.GaugeValue,
+		float64(numberConnectedClient))
 	return scanner.Err()
 }
 
@@ -249,14 +264,14 @@ func CollectClientStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 		} else if fields[0] == "Updated" && len(fields) == 2 {
 			// Time at which the statistics were updated.
 			location, _ := time.LoadLocation("Local")
-			time, err := time.ParseInLocation("Mon Jan 2 15:04:05 2006", fields[1], location)
+			timeParser, err := time.ParseInLocation("Mon Jan 2 15:04:05 2006", fields[1], location)
 			if err != nil {
 				return err
 			}
 			ch <- prometheus.MustNewConstMetric(
 				openvpnStatusUpdateTimeDesc,
 				prometheus.GaugeValue,
-				float64(time.Unix()),
+				float64(timeParser.Unix()),
 				statusPath)
 		} else if desc, ok := openvpnClientDescs[fields[0]]; ok && len(fields) == 2 {
 			// Traffic counters.
@@ -270,7 +285,7 @@ func CollectClientStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 				value,
 				statusPath)
 		} else {
-			return fmt.Errorf("Unsupported key: %q", fields[0])
+			return fmt.Errorf("unsupported key: %q", fields[0])
 		}
 	}
 	return scanner.Err()
@@ -327,13 +342,18 @@ func main() {
 	)
 	flag.Parse()
 
+	log.Printf("Starting OpenVPN Exporter\n")
+	log.Printf("Listen address: %v\n", *listenAddress)
+	log.Printf("Metrics path: %v\n", *metricsPath)
+	log.Printf("openvpn.status_path: %v\n", *openvpnStatusPaths)
+
 	exporter, err := NewOpenVPNExporter(strings.Split(*openvpnStatusPaths, ","))
 	if err != nil {
 		panic(err)
 	}
 	prometheus.MustRegister(exporter)
 
-	http.Handle(*metricsPath, prometheus.Handler())
+	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`
 			<html>
