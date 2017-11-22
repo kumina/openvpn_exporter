@@ -18,7 +18,9 @@ exported over TCP port 9176.
 Please refer to this utility's `main()` function for a full list of
 supported command line flags.
 
-## Client statistics
+## Exposed metrics example
+
+### Client statistics
 
 For clients status files, the exporter generates metrics that may look
 like this:
@@ -37,7 +39,7 @@ openvpn_status_update_time_seconds{status_path="..."} 1.490092749e+09
 openvpn_up{status_path="..."} 1
 ```
 
-## Server statistics
+### Server statistics
 
 For server status files (both version 2 and 3), the exporter generates
 metrics that may look like this:
@@ -48,4 +50,49 @@ openvpn_server_client_sent_bytes_total{common_name="...",connection_time="...",r
 openvpn_server_route_last_reference_time_seconds{common_name="...",real_address="...",status_path="...",virtual_address="..."} 1.493018841e+09
 openvpn_status_update_time_seconds{status_path="..."} 1.490089154e+09
 openvpn_up{status_path="..."} 1
+openvpn_server_connected_clients 1
+```
+
+## Usage
+
+Usage of openvpn_exporter:
+```
+  -openvpn.status_paths string
+    	Paths at which OpenVPN places its status files. (default "examples/client.status,examples/server2.status,examples/server3.status")
+  -web.listen-address string
+    	Address to listen on for web interface and telemetry. (default ":9176")
+  -web.telemetry-path string
+    	Path under which to expose metrics. (default "/metrics")
+```
+
+E.g:
+```
+openvpn_exporter -openvpn.status_paths /etc/openvpn/openvpn-status.log
+```
+
+## Docker
+
+Build the image:
+```
+docker build --force-rm=true -t openvpn_exporter .
+```
+
+The final image is around 8MB. A temporary image has been downloaded(Golang) to make the final one. Once built, this temporary image become orphan, you can delete it:
+```
+docker rmi -f $(docker images | grep "<none>" | awk "{print \$3}")
+```
+
+To use with docker you must mount your status file to `/etc/openvpn_exporter/server.status`.
+```
+docker run -it -p 9176:9176 -v /path/to/openvpn_server.status:/etc/openvpn_exporter/server.status openvpn_exporter
+```
+
+Metrics should be available on your host IP: http://<host_ip>:9176/metrics. E.g: http://10.39.9.94:9176/metrics
+
+
+## Get a standalone executable binary
+
+Use the docker image to copy the built binary into a mounted volume
+```bash
+docker run -it -v /local/empty/folder:/volume openvpn_exporter cp openvpn_exporter /volume
 ```
