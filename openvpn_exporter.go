@@ -198,9 +198,10 @@ func CollectServerStatusFromReader(statusPath string, file io.Reader, ch chan<- 
 				statusPath)
 		} else if fields[0] == "TITLE" && len(fields) == 2 {
 			// OpenVPN version number.
-		} else if fields[0] == "CLIENT_LIST"{
-			numberConnectedClient ++
 		} else if header, ok := openvpnServerHeaders[fields[0]]; ok {
+			if fields[0] == "CLIENT_LIST"{
+				numberConnectedClient ++
+			}
 			// Entry that depends on a preceding HEADERS directive.
 			columnNames, ok := headersFound[fields[0]]
 			if !ok {
