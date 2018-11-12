@@ -1,4 +1,4 @@
-module github.com/caarlos0/openvpn_exporter
+module github.com/kumina/openvpn_exporter
 
 require (
 	github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973 // indirect

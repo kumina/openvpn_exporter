@@ -56,7 +56,8 @@ openvpn_server_connected_clients 1
 ## Usage
 
 Usage of openvpn_exporter:
-```
+
+```sh
   -openvpn.status_paths string
     	Paths at which OpenVPN places its status files. (default "examples/client.status,examples/server2.status,examples/server3.status")
   -web.listen-address string
@@ -66,33 +67,24 @@ Usage of openvpn_exporter:
 ```
 
 E.g:
-```
+
+```sh
 openvpn_exporter -openvpn.status_paths /etc/openvpn/openvpn-status.log
 ```
 
 ## Docker
 
-Build the image:
-```
-docker build --force-rm=true -t openvpn_exporter .
-```
-
-The final image is around 8MB. A temporary image has been downloaded(Golang) to make the final one. Once built, this temporary image become orphan, you can delete it:
-```
-docker rmi -f $(docker images | grep "<none>" | awk "{print \$3}")
-```
-
 To use with docker you must mount your status file to `/etc/openvpn_exporter/server.status`.
-```
-docker run -it -p 9176:9176 -v /path/to/openvpn_server.status:/etc/openvpn_exporter/server.status openvpn_exporter
+
+```sh
+docker run -p 9176:9176 \
+  -v /path/to/openvpn_server.status:/etc/openvpn_exporter/server.status \
+  kumina:openvpn_exporter -openvpn.status_paths /etc/openvpn_exporter/server.status
 ```
 
-Metrics should be available on your host IP: http://<host_ip>:9176/metrics. E.g: http://10.39.9.94:9176/metrics
-
+Metrics should be available at http://localhost:9176/metrics.
 
 ## Get a standalone executable binary
 
-Use the docker image to copy the built binary into a mounted volume
-```bash
-docker run -it -v /local/empty/folder:/volume openvpn_exporter cp openvpn_exporter /volume
-```
+You can download the pre-compiled binaries from the
+[releases page](https://github.com/kumina/openvpn_exporter/releases).
