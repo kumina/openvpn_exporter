@@ -64,6 +64,8 @@ Usage of openvpn_exporter:
     	Address to listen on for web interface and telemetry. (default ":9176")
   -web.telemetry-path string
     	Path under which to expose metrics. (default "/metrics")
+  -ignore.individuals bool
+        If ignoring metrics for individuals (default false)
 ```
 
 E.g:
