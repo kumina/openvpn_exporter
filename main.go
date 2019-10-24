@@ -54,7 +54,7 @@ var (
 
 	// Metrics specific to OpenVPN servers.
 	openvpnConnectedClientsDesc = prometheus.NewDesc(
-		prometheus.BuildFQName("openvpn", "", "openvpn_server_connected_clients"),
+		prometheus.BuildFQName("openvpn", "", "server_connected_clients"),
 		"Number Of Connected Clients",
 		[]string{"status_path"}, nil)
 
