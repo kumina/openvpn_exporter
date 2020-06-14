@@ -58,7 +58,7 @@ var (
 		"UNIX timestamp at which the OpenVPN statistics were updated.",
 		[]string{"status_path", "instance_id"}, nil)
 	openvpnStatusApiBuildInfo = prometheus.NewDesc(
-		prometheus.BuildFQName("openvpn", "", "build_info"),
+		prometheus.BuildFQName("openvpn", "", "server_build_info"),
 		"application and build information on the running OpenVPN system.",
 		[]string{"status_path", "instance_id", "title"}, nil)
 
