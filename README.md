@@ -15,7 +15,7 @@ multiple status files, using the `-openvpn.status_paths` command line
 flag. Paths need to be comma separated. Metrics for all status files are
 exported over TCP port 9176.
 
-The exporter also supports the OpenVPN "Access Server" via `sacli VPNStatus` 
+The exporter also supports the OpenVPN "Access Server" via `sacli VPNStatus`, 
 the "Access Server Client API" command. Use the `-openvpn.status_type api` 
 command line flag to enable this mode and get the status from all of the 
 OpenVPN processes running on the Access Server. In "api" mode the 
@@ -101,7 +101,7 @@ OpenVPN Access Server:
 ```sh
 docker run -p 9176:9176 \
   -v /usr/local/openvpn_as/scripts:/usr/local/openvpn_as/scripts \
-  kumina/openvpn-exporter -openvpn.status_paths api
+  kumina/openvpn-exporter -openvpn.status_type api
 ```
 
 Metrics should be available at http://localhost:9176/metrics.
