@@ -3,11 +3,13 @@ package exporters
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -26,23 +28,38 @@ type OpenvpnServerHeaderField struct {
 
 type OpenVPNExporter struct {
 	statusPaths                 []string
+	statusType					string
 	openvpnUpDesc               *prometheus.Desc
 	openvpnStatusUpdateTimeDesc *prometheus.Desc
+	openvpnStatusApiBuildInfo	*prometheus.Desc
 	openvpnConnectedClientsDesc *prometheus.Desc
 	openvpnClientDescs          map[string]*prometheus.Desc
 	openvpnServerHeaders        map[string]OpenvpnServerHeader
 }
 
-func NewOpenVPNExporter(statusPaths []string, ignoreIndividuals bool) (*OpenVPNExporter, error) {
+func NewOpenVPNExporter(statusPaths []string, ignoreIndividuals bool, statusType string) (*OpenVPNExporter, error) {
 	// Metrics exported both for client and server statistics.
 	openvpnUpDesc := prometheus.NewDesc(
 		prometheus.BuildFQName("openvpn", "", "up"),
 		"Whether scraping OpenVPN's metrics was successful.",
 		[]string{"status_path"}, nil)
+
+	updateLabels := []string{}
+
+	if statusType == "api" {
+		updateLabels = []string{"status_path", "instance_id"}
+	} else {
+		updateLabels = []string{"status_path"}
+	}
 	openvpnStatusUpdateTimeDesc := prometheus.NewDesc(
 		prometheus.BuildFQName("openvpn", "", "status_update_time_seconds"),
 		"UNIX timestamp at which the OpenVPN statistics were updated.",
-		[]string{"status_path"}, nil)
+		updateLabels, nil)
+
+	openvpnStatusApiBuildInfo := prometheus.NewDesc(
+		prometheus.BuildFQName("openvpn", "", "server_build_info"),
+		"application and build information on the running OpenVPN system.",
+		[]string{"status_path", "instance_id", "title"}, nil)
 
 	// Metrics specific to OpenVPN servers.
 	openvpnConnectedClientsDesc := prometheus.NewDesc(
@@ -145,8 +162,10 @@ func NewOpenVPNExporter(statusPaths []string, ignoreIndividuals bool) (*OpenVPNE
 
 	return &OpenVPNExporter{
 		statusPaths:                 statusPaths,
+		statusType:                  statusType,
 		openvpnUpDesc:               openvpnUpDesc,
 		openvpnStatusUpdateTimeDesc: openvpnStatusUpdateTimeDesc,
+		openvpnStatusApiBuildInfo: 	 openvpnStatusApiBuildInfo,
 		openvpnConnectedClientsDesc: openvpnConnectedClientsDesc,
 		openvpnClientDescs:          openvpnClientDescs,
 		openvpnServerHeaders:        openvpnServerHeaders,
@@ -329,6 +348,137 @@ func (e *OpenVPNExporter) collectClientStatusFromReader(statusPath string, file 
 	return scanner.Err()
 }
 
+func (e *OpenVPNExporter) collectStatusFromApiJson(statusPath string, output []byte, ch chan<- prometheus.Metric) error {
+	var outputInterface map[string]interface{}
+
+	err := json.Unmarshal(output, &outputInterface)
+	if err != nil {
+		return err
+	}
+
+	return e.collectStatusFromApiInterface(statusPath, outputInterface, ch)
+}
+
+func (e *OpenVPNExporter) collectStatusFromApiInterface(statusPath string, outputInterface map[string]interface{}, ch chan<- prometheus.Metric) error {
+
+	connectedClientCount := 0
+
+	for instanceId, data := range outputInterface {
+		if dataInterface, ok := data.(map[string]interface{}); ok {
+			for category, categoryData := range dataInterface {
+				if category == "title" {
+					// Build information
+					buildInfo := categoryData.(string)
+					labels := []string{statusPath, instanceId, buildInfo}
+					ch <- prometheus.MustNewConstMetric(
+						e.openvpnStatusApiBuildInfo,
+						prometheus.GaugeValue,
+						1.0,
+						labels...)
+				} else if category == "time" {
+					labels := []string{statusPath, instanceId}
+
+					// Time at which the statistics were updated.
+					time := categoryData.([]interface{})
+					timeStartStats, err := strconv.ParseFloat(time[1].(string), 64)
+					if err != nil {
+						return err
+					}
+					ch <- prometheus.MustNewConstMetric(
+						e.openvpnStatusUpdateTimeDesc,
+						prometheus.GaugeValue,
+						timeStartStats,
+						labels...)
+				} else if category == "client_list" || category == "routing_table" {
+					for _, item := range categoryData.([]interface{}) {
+						item := item.([]interface{})
+						if header, ok := e.openvpnServerHeaders[strings.ToUpper(category)]; ok {
+							if category == "client_list" {
+								// increment client counter
+								connectedClientCount ++
+							}
+							// Store entry values in a map indexed by column name.
+							columnValues := map[string]string{}
+							for _, column := range header.LabelColumns {
+								var index int
+
+								if category == "client_list" {
+									switch {
+									case column == "Common Name":
+										index = 0
+									case column == "Real Address":
+										index = 1
+									case column == "Virtual Address":
+										index = 2
+									case column == "Connected Since (time_t)":
+										index = 7
+									case column == "Username":
+										index = 8
+									}
+								} else if category == "routing_table" {
+									switch {
+									case column == "Virtual Address":
+										index = 0
+									case column == "Common Name":
+										index = 1
+									case column == "Real Address":
+										index = 2
+									}
+								}
+								columnValues[column] = item[index].(string)
+							}
+
+							for _, metric := range header.Metrics {
+								var index int
+
+								switch {
+								case metric.Column == "Bytes Received":
+									index = 4
+								case metric.Column == "Bytes Sent":
+									index = 5
+								case metric.Column == "Last Ref (time_t)":
+									index = 4
+								}
+								columnValues[metric.Column] = item[index].(string)
+							}
+
+							// Extract columns that should act as entry labels.
+							labels := []string{statusPath}
+							for _, column := range header.LabelColumns {
+								labels = append(labels, columnValues[column])
+							}
+
+							// Export relevant columns as individual metrics.
+							for _, metric := range header.Metrics {
+								if columnValue, ok := columnValues[metric.Column]; ok {
+									value, err := strconv.ParseFloat(columnValue, 64)
+									if err != nil {
+										return err
+									}
+									ch <- prometheus.MustNewConstMetric(
+										metric.Desc,
+										metric.ValueType,
+										value,
+										labels...)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// add the count of connected clients
+	ch <- prometheus.MustNewConstMetric(
+		e.openvpnConnectedClientsDesc,
+		prometheus.GaugeValue,
+		float64(connectedClientCount),
+		statusPath)
+
+	return nil
+}
+
 func (e *OpenVPNExporter) collectStatusFromFile(statusPath string, ch chan<- prometheus.Metric) error {
 	conn, err := os.Open(statusPath)
 	defer conn.Close()
@@ -338,26 +488,63 @@ func (e *OpenVPNExporter) collectStatusFromFile(statusPath string, ch chan<- pro
 	return e.collectStatusFromReader(statusPath, conn, ch)
 }
 
+func (e *OpenVPNExporter) collectStatusFromApi(statusPath string, ch chan<- prometheus.Metric) error {
+	cmd := exec.Command("/usr/local/openvpn_as/scripts/sacli", "VPNStatus")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		log.Fatalf("cmd.Run() failed with %s\n", err)
+		return err
+	}
+
+	return e.collectStatusFromApiJson(statusPath, stdout.Bytes(), ch)
+}
+
 func (e *OpenVPNExporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.openvpnUpDesc
 }
 
+
 func (e *OpenVPNExporter) Collect(ch chan<- prometheus.Metric) {
-	for _, statusPath := range e.statusPaths {
-		err := e.collectStatusFromFile(statusPath, ch)
+	// api mode
+	if e.statusType == "api" {
+		err := e.collectStatusFromApi(e.statusType, ch)
 		if err == nil {
-			ch <- prometheus.MustNewConstMetric(
-				e.openvpnUpDesc,
-				prometheus.GaugeValue,
-				1.0,
-				statusPath)
-		} else {
-			log.Printf("Failed to scrape showq socket: %s", err)
-			ch <- prometheus.MustNewConstMetric(
-				e.openvpnUpDesc,
-				prometheus.GaugeValue,
-				0.0,
-				statusPath)
+			if err == nil {
+				ch <- prometheus.MustNewConstMetric(
+					e.openvpnUpDesc,
+					prometheus.GaugeValue,
+					1.0,
+					e.statusType)
+			} else {
+				log.Printf("Failed to scrape api: %s", err)
+				ch <- prometheus.MustNewConstMetric(
+					e.openvpnUpDesc,
+					prometheus.GaugeValue,
+					0.0,
+					e.statusType)
+			}
+		}
+		// File mode
+	} else {
+		for _, statusPath := range e.statusPaths {
+			err := e.collectStatusFromFile(statusPath, ch)
+			if err == nil {
+				ch <- prometheus.MustNewConstMetric(
+					e.openvpnUpDesc,
+					prometheus.GaugeValue,
+					1.0,
+					statusPath)
+			} else {
+				log.Printf("Failed to scrape showq socket: %s", err)
+				ch <- prometheus.MustNewConstMetric(
+					e.openvpnUpDesc,
+					prometheus.GaugeValue,
+					0.0,
+					statusPath)
+			}
 		}
 	}
 }
