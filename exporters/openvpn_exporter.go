@@ -184,6 +184,8 @@ func (e *OpenVPNExporter) collectServerStatusFromReader(statusPath string, file 
 	// counter of connected client
 	numberConnectedClient := 0
 
+	recordedMetrics := map[OpenvpnServerHeaderField][]string{}
+
 	for scanner.Scan() {
 		fields := strings.Split(scanner.Text(), separator)
 		if fields[0] == "END" && len(fields) == 1 {
@@ -237,15 +239,20 @@ func (e *OpenVPNExporter) collectServerStatusFromReader(statusPath string, file 
 			// Export relevant columns as individual metrics.
 			for _, metric := range header.Metrics {
 				if columnValue, ok := columnValues[metric.Column]; ok {
-					value, err := strconv.ParseFloat(columnValue, 64)
-					if err != nil {
-						return err
+					if l, _ := recordedMetrics[metric]; ! subslice(labels, l) {
+						value, err := strconv.ParseFloat(columnValue, 64)
+						if err != nil {
+							return err
+						}
+						ch <- prometheus.MustNewConstMetric(
+							metric.Desc,
+							metric.ValueType,
+							value,
+							labels...)
+						recordedMetrics[metric] = append(recordedMetrics[metric], labels...)
+					} else {
+						log.Printf("Metric entry with same labels: %s, %s", metric.Column, labels)
 					}
-					ch <- prometheus.MustNewConstMetric(
-						metric.Desc,
-						metric.ValueType,
-						value,
-						labels...)
 				}
 			}
 		} else {
@@ -259,6 +266,27 @@ func (e *OpenVPNExporter) collectServerStatusFromReader(statusPath string, file 
 		float64(numberConnectedClient),
 		statusPath)
 	return scanner.Err()
+}
+
+// Does slice contain string
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}
+
+// Is a sub-slice of slice
+func subslice(sub []string, main []string) bool {
+	if len(sub) > len(main) {return false}
+	for _, s := range sub {
+		if ! contains(main, s) {
+			return false
+		}
+	}
+	return true
 }
 
 // Converts OpenVPN client status information into Prometheus metrics.
