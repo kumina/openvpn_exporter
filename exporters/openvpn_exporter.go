@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"io"
 	"log"
+	"path/filepath"
 	"os"
 	"strconv"
 	"strings"
@@ -343,21 +344,28 @@ func (e *OpenVPNExporter) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (e *OpenVPNExporter) Collect(ch chan<- prometheus.Metric) {
-	for _, statusPath := range e.statusPaths {
-		err := e.collectStatusFromFile(statusPath, ch)
-		if err == nil {
-			ch <- prometheus.MustNewConstMetric(
-				e.openvpnUpDesc,
-				prometheus.GaugeValue,
-				1.0,
-				statusPath)
-		} else {
-			log.Printf("Failed to scrape showq socket: %s", err)
-			ch <- prometheus.MustNewConstMetric(
-				e.openvpnUpDesc,
-				prometheus.GaugeValue,
-				0.0,
-				statusPath)
+	for _, statusPathGlob := range e.statusPaths {
+		matches, err := filepath.Glob(statusPathGlob)
+		if err != nil {
+			log.Printf("Glob failed on %v: %v", statusPathGlob, err)
+			continue
+		}
+		for _, statusPath := range matches {
+			err := e.collectStatusFromFile(statusPath, ch)
+			if err == nil {
+				ch <- prometheus.MustNewConstMetric(
+					e.openvpnUpDesc,
+					prometheus.GaugeValue,
+					1.0,
+					statusPath)
+			} else {
+				log.Printf("Failed to scrape showq socket: %s", err)
+				ch <- prometheus.MustNewConstMetric(
+					e.openvpnUpDesc,
+					prometheus.GaugeValue,
+					0.0,
+					statusPath)
+			}
 		}
 	}
 }
