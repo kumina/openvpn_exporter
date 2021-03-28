@@ -26,7 +26,7 @@ GOFLAGS =
 
 # Where to push the docker image.
 REGISTRY ?= docker.io
-REGISTRY_USER ?= startersclan
+REGISTRY_USER ?= kumina
 
 ###
 ### These variables should not need tweaking.
@@ -38,7 +38,7 @@ VERSION = $(shell git describe --tags --exact-match 2>/dev/null || git symbolic-
 # Get the short SHA
 SHA_SHORT = $(shell git rev-parse --short HEAD)
 
-SRC_DIRS := cmd pkg # directories which hold app source (not vendored)
+SRC_DIRS := exporters # directories which hold app source (not vendored)
 
 ALL_PLATFORMS := linux/amd64 linux/arm linux/arm64 linux/ppc64le linux/s390x
 
