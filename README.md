@@ -90,3 +90,63 @@ Metrics should be available at http://localhost:9176/metrics.
 
 You can download the pre-compiled binaries from the
 [releases page](https://github.com/kumina/openvpn_exporter/releases).
+
+## Development
+
+Requires `make`, `docker`, and `docker-compose` if you want all `make` commands to be working.
+
+Requires [`go`](https://golang.org/doc/install) only if you are developing.
+
+#### Mount a ramdisk on `./.go/bin`
+
+```sh
+make mount-ramdisk
+```
+
+#### Build
+
+```sh
+make build  # Defaults to linux amd64
+make build GOOS=linux GOARCH=arm64 # For arm64
+# etc...
+```
+
+#### Build and run
+
+```sh
+make up     # Defaults to linux amd64
+make up GOOS=linux GOARCH=arm64 # For arm64
+# etc...
+```
+
+#### Build docker image
+
+```sh
+make build-image    # Defaults to linux amd64
+make build-image GOOS=linux GOARCH=arm64 # For arm64
+# etc...
+```
+
+#### Test
+
+```sh
+make test
+```
+
+#### Clean
+
+```sh
+make clean
+```
+
+#### Unmount ramdisk on `./.go/bin`
+
+```sh
+make unmount-ramdisk
+```
+
+#### Shell
+
+```sh
+make shell
+```
