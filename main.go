@@ -29,6 +29,7 @@ func main() {
 		metricsPath        = flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
 		openvpnStatusPaths = flag.String("openvpn.status_paths", "examples/client.status,examples/server2.status,examples/server3.status", "Paths at which OpenVPN places its status files.")
 		ignoreIndividuals  = flag.Bool("ignore.individuals", false, "If ignoring metrics for individuals")
+		openvpnStatusType  = flag.String("openvpn.status_type", "file", "Type of OpenVPN status, 'file' (personal vpn) or 'api' (access server).")
 	)
 	flag.Parse()
 
@@ -37,8 +38,8 @@ func main() {
 	log.Printf("Metrics path: %v\n", *metricsPath)
 	log.Printf("openvpn.status_path: %v\n", *openvpnStatusPaths)
 	log.Printf("Ignore Individuals: %v\n", *ignoreIndividuals)
-
-	exporter, err := exporters.NewOpenVPNExporter(strings.Split(*openvpnStatusPaths, ","), *ignoreIndividuals)
+	log.Printf("openvpn.status_type: %v\n", *openvpnStatusType)
+	exporter, err := exporters.NewOpenVPNExporter(strings.Split(*openvpnStatusPaths, ","), *ignoreIndividuals, *openvpnStatusType)
 	if err != nil {
 		panic(err)
 	}
