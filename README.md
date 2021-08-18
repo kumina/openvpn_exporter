@@ -17,8 +17,9 @@ As it is not uncommon to run multiple instances of OpenVPN on a single
 system (e.g., multiple servers, multiple clients or a mixture of both),
 this exporter can be configured to scrape and export the status of
 multiple status files, using the `-openvpn.status_paths` command line
-flag. Paths need to be comma separated. Metrics for all status files are
-exported over TCP port 9176.
+flag. Paths or [globs](https://en.wikipedia.org/wiki/Glob_(programming))
+need to be comma separated. Metrics for all status files are exported
+over TCP port 9176.
 
 Please refer to this utility's `main()` function for a full list of
 supported command line flags.
